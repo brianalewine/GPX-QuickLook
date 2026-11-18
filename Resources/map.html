@@ -3,12 +3,22 @@
 </style></head><body><header><h1 id="name"></h1><div class="stats"><div class="stat"><span>Start</span><strong id="start"></strong></div><div class="stat"><span>Finish</span><strong id="finish"></strong></div><div class="stat"><span>Duration</span><strong id="duration"></strong></div><div class="stat"><span>Distance</span><strong id="distance"></strong></div></div></header><div id="mapWrap"><div id="map"></div><button id="fit" title="Zoom to fit" aria-label="Zoom to fit"><svg viewBox="0 0 20 20"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></button><div id="minimapPanel" hidden><div id="minimap" aria-label="Track overview"></div><button id="collapse" title="Collapse minimap" aria-label="Collapse minimap" aria-expanded="true"><svg viewBox="0 0 20 20"><path d="m6 13 7-7M6 6h7v7"/></svg></button></div><div id="status" hidden><span>Some map tiles couldn’t load.</span><button id="retry">Retry</button></div></div><script src="leaflet.js"></script><script>
 const data=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('__TRACK_BASE64__'),c=>c.charCodeAt(0))));
 for(const key of ['name','start','finish','duration','distance'])document.getElementById(key).textContent=data[key];
-const map=L.map('map',{zoomControl:true,scrollWheelZoom:false,zoomAnimation:true,fadeAnimation:false,zoomSnap:0,zoomDelta:.5,maxZoom:24});map.attributionControl.setPrefix(false);
+// Keep fractional coordinates throughout a gesture instead of rounding the origin each frame.
+const PreciseMap=L.Map.extend({
+ _getNewPixelOrigin:function(center,zoom){return this.project(center,zoom).subtract(this.getSize().divideBy(2)).add(this._getMapPanePos());},
+ latLngToLayerPoint:function(latlng){return this.project(L.latLng(latlng)).subtract(this.getPixelOrigin());}
+});
+const map=new PreciseMap('map',{zoomControl:true,scrollWheelZoom:false,zoomAnimation:true,fadeAnimation:false,zoomSnap:0,zoomDelta:.5,maxZoom:24});map.attributionControl.setPrefix(false);
 const tileURL='gpx-tile://osm/{z}/{x}/{y}.png';
 // Leaflet's hard reset discards every image on each fractional zoom frame.
 // Retain loaded levels and decoded images so zooming and returning to fit never start blank.
 const RetainedTiles=L.TileLayer.extend({
  initialize:function(url,options){L.TileLayer.prototype.initialize.call(this,url,options);this.decoded=new Map();},
+ _setZoomTransform:function(level,center,zoom){
+  const scale=this._map.getZoomScale(zoom,level.zoom);
+  const translate=level.origin.multiplyBy(scale).subtract(this._map._getNewPixelOrigin(center,zoom));
+  L.DomUtil.setTransform(level.el,translate,scale);
+ },
  getEvents:function(){const events=L.TileLayer.prototype.getEvents.call(this);delete events.viewprereset;return events;},
  createTile:function(coords,done){
   const key=this._tileCoordsToKey(coords),cached=this.decoded.get(key);
@@ -59,25 +69,33 @@ function updateMinimap(event){
  if(!mini){mini=L.map('minimap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,touchZoom:false,keyboard:false,zoomAnimation:false,zoomSnap:0});miniTiles=new RetainedTiles(tileURL,{maxZoom:24,maxNativeZoom:19}).addTo(mini);L.polyline(segments,{color:'#2878d7',weight:2,interactive:false}).addTo(mini);viewport=L.rectangle(map.getBounds(),{color:'#343e49',weight:1,fillColor:'#343e49',fillOpacity:.12,interactive:false}).addTo(mini);mini.on('click',e=>map.panTo(e.latlng));}
  const size=mini.getSize(),element=document.getElementById('minimap');
  if(size.x!==element.clientWidth||size.y!==element.clientHeight||!mini._loaded){mini.invalidateSize({pan:false});mini.fitBounds(line.getBounds(),{padding:[12,12],maxZoom:18,animate:false});}
- viewport.setBounds(visibleBounds);
+ if(!viewport.getBounds().equals(visibleBounds))viewport.setBounds(visibleBounds);
 }
 collapse.onclick=e=>{e.stopPropagation();minimapEnabled=!minimapEnabled;window.webkit?.messageHandlers?.minimapPreference?.postMessage(minimapEnabled);updateMinimap();};
-let zoomFrame=0,targetZoom=null,zoomAnchor=null,lastFrame=0;
-function stopSmoothZoom(){cancelAnimationFrame(zoomFrame);zoomFrame=0;targetZoom=null;lastFrame=0;}
-function smoothZoom(timestamp){
- if(targetZoom===null)return;
- const elapsed=lastFrame?Math.min(timestamp-lastFrame,40):16;lastFrame=timestamp;
- const current=map.getZoom(),difference=targetZoom-current;
- if(Math.abs(difference)<.002){map.setZoomAround(zoomAnchor,targetZoom,{animate:false});stopSmoothZoom();return;}
- map.setZoomAround(zoomAnchor,current+difference*(1-Math.exp(-elapsed/55)),{animate:false});
- zoomFrame=requestAnimationFrame(smoothZoom);
+let zoomFrame=0,targetZoom=null,zoomAnchor=null,anchorLatLng=null,zoomIdleTimer=0,zoomGesture=false;
+function finishZoomGesture(){
+ clearTimeout(zoomIdleTimer);
+ if(zoomGesture){zoomGesture=false;map._moveEnd(true);map.fire('viewreset');}
+ targetZoom=null;
+}
+function stopSmoothZoom(){cancelAnimationFrame(zoomFrame);zoomFrame=0;finishZoomGesture();}
+function smoothZoom(){
+ zoomFrame=0;if(targetZoom===null)return;
+ if(!zoomGesture){zoomGesture=true;map._moveStart(true,false);}
+ // Follow the OS-provided wheel momentum directly: one update per display frame,
+ // with no second inertia filter or repeated full view resets.
+ const center=map.unproject(map.project(anchorLatLng,targetZoom).subtract(zoomAnchor.subtract(map.getSize().divideBy(2))),targetZoom);
+ map._move(center,targetZoom,{pinch:true});
 }
 map.getContainer().addEventListener('wheel',e=>{
- e.preventDefault();map.stop();
+ e.preventDefault();
+ if(!zoomGesture&&!zoomFrame)map.stop();
  zoomAnchor=map.mouseEventToContainerPoint(e);
+ anchorLatLng=map.containerPointToLatLng(zoomAnchor);
  const delta=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?map.getSize().y:1);
  targetZoom=Math.max(map.getMinZoom(),Math.min(24,(targetZoom??map.getZoom())-delta/(e.ctrlKey?90:240)));
  if(!zoomFrame)zoomFrame=requestAnimationFrame(smoothZoom);
+ clearTimeout(zoomIdleTimer);zoomIdleTimer=setTimeout(()=>{if(zoomFrame){cancelAnimationFrame(zoomFrame);smoothZoom();}finishZoomGesture();},70);
 },{passive:false});
 map.getContainer().addEventListener('mousedown',stopSmoothZoom);
 function fit(){

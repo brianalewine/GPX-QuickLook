@@ -48,11 +48,17 @@ import WebKit
                         const panWorks=!center.equals(map.getCenter());
                         window.wheelBefore=map.getZoom();
                         map.getContainer().dispatchEvent(new WheelEvent('wheel',{deltaY:-60,clientX:400,clientY:300,bubbles:true,cancelable:true}));
+                        requestAnimationFrame(()=>{
+                            window.immediateWheel=Math.abs(map.getZoom()-(wheelBefore+.25))<.00001;
+                            window.anchorStable=map.latLngToContainerPoint(anchorLatLng).distanceTo(zoomAnchor)<.01;
+                            const firstZoom=map.getZoom();
+                            setTimeout(()=>window.noAddedInertia=Math.abs(map.getZoom()-firstZoom)<.00001,180);
+                        });
                         initiallyHidden && framingWorks && stillInsideHidden && retainedDuringZoom && zoomWorks && panWorks && minimapShown && toggleOff && toggleOn
                         """) { result,error in
                         guard result as? Bool == true, error == nil else { print("Zoom failed",error as Any);exit(1) }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        self.web.evaluateJavaScript("map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
+                        self.web.evaluateJavaScript("window.immediateWheel && window.anchorStable && window.noAddedInertia && !zoomGesture && map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
                         guard result as? Bool == true, error == nil else { print("Smooth wheel zoom failed",error as Any);exit(1) }
                         self.web.evaluateJavaScript("""
                             map.setZoom(24,{animate:false});
@@ -64,7 +70,7 @@ import WebKit
                         guard result as? Bool == true, error == nil else { print("Overzoom / instant fit failed",error as Any);exit(1) }
                         self.web.takeSnapshot(with:nil) { image,error in
                             if let image, let data=image.tiffRepresentation,let bitmap=NSBitmapImageRep(data:data),let png=bitmap.representation(using:.png,properties:[:]) { try! png.write(to:root.appendingPathComponent("Samples/Preview.png")) }
-                            print("Passed: native tile loading, markers, bounds, zoom, pan, fractional wheel zoom, retained tiles, 3.3% padding, trail-only minimap, level-24 overzoom, instant fit; snapshot saved")
+                            print("Passed: native tile loading, markers, bounds, zoom, pan, first-frame wheel response, stable cursor anchor, no added inertia, retained tiles, 3.3% padding, trail-only minimap, level-24 overzoom, instant fit; snapshot saved")
                             timer.invalidate();NSApp.terminate(nil)
                         }
                         }
