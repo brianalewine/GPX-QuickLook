@@ -28,20 +28,28 @@ import WebKit
                     self.web.evaluateJavaScript("""
                         fit();
                         if(!minimapEnabled){minimapEnabled=true;updateMinimap();}
-                        const initiallyHidden=panel.hidden;
+                        const initiallyHidden=!minimapVisible;
                         const bounds=line.getBounds(),size=map.getSize();
                         const a=map.latLngToContainerPoint(bounds.getNorthWest()),b=map.latLngToContainerPoint(bounds.getSouthEast());
                         const fill=Math.max((b.x-a.x)/size.x,(b.y-a.y)/size.y);
                         const framingWorks=fill>.93&&fill<.95&&a.x>=11&&a.y>=11&&b.x<=size.x-11&&b.y<=size.y-11;
 
+                        map.fire('dragstart');map.panBy([900,0],{animate:false});
+                        const hiddenThroughoutDrag=!minimapVisible;
+                        map.fire('dragend');const visibleAfterRelease=minimapVisible;
+                        map.fire('dragstart');map.panBy([-900,0],{animate:false});
+                        const visibleThroughoutDrag=minimapVisible;
+                        map.fire('dragend');const hiddenAfterRelease=!minimapVisible;
+                        const dragVisibilityWorks=hiddenThroughoutDrag&&visibleAfterRelease&&visibleThroughoutDrag&&hiddenAfterRelease;
+                        const fadeWorks=getComputedStyle(panel).transitionProperty.includes('opacity')&&getComputedStyle(panel).transitionDuration.includes('0.12s');
                         const before=map.getZoom();
                         map.setZoom(before+.03,{animate:false});
-                        const stillInsideHidden=panel.hidden&&map.getBounds().contains(line.getBounds());
+                        const stillInsideHidden=!minimapVisible&&map.getBounds().contains(line.getBounds());
                         const originalTiles=Array.from(tiles.getContainer().querySelectorAll('img')).filter(img=>img.complete&&img.naturalWidth);
                         map.setZoom(before+2,{animate:false});
                         const retainedDuringZoom=originalTiles.some(img=>tiles.getContainer().contains(img));
                         const zoomWorks=map.getZoom()>before;
-                        const minimapShown=!panel.hidden&&!document.getElementById('minimap').hidden;
+                        const minimapShown=!!minimapVisible&&!document.getElementById('minimap').hidden;
                         collapse.click();const toggleOff=panel.classList.contains('collapsed')&&document.getElementById('minimap').hidden;
                         collapse.click();const toggleOn=!panel.classList.contains('collapsed')&&!document.getElementById('minimap').hidden;
                         const center=map.getCenter();map.panBy([60,40],{animate:false});
@@ -54,23 +62,37 @@ import WebKit
                             const firstZoom=map.getZoom();
                             setTimeout(()=>window.noAddedInertia=Math.abs(map.getZoom()-firstZoom)<.00001,180);
                         });
-                        initiallyHidden && framingWorks && stillInsideHidden && retainedDuringZoom && zoomWorks && panWorks && minimapShown && toggleOff && toggleOn
+                        setTimeout(()=>{
+                            const emit=(type,scale)=>{const event=new Event(type,{bubbles:true,cancelable:true});Object.assign(event,{scale,clientX:400,clientY:300});map.getContainer().dispatchEvent(event);};
+                            const startZoom=map.getZoom(),tileZoom=tiles._tileZoom;
+                            emit('gesturestart',1);emit('gesturechange',1.5);
+                            requestAnimationFrame(()=>{
+                                window.pinchGainWorks=Math.abs(map.getZoom()-startZoom-Math.log2(1.5)*3)<.00001;
+                                window.tilesUpdateDuringGesture=nativePinchActive&&tiles._tileZoom!==tileZoom;
+                                window.retainsImagesDuringPinch=Array.from(tiles.getContainer().querySelectorAll('img')).some(img=>img.complete&&img.naturalWidth);
+                                emit('gestureend',1.5);
+                                const ctrlStart=map.getZoom();
+                                map.getContainer().dispatchEvent(new WheelEvent('wheel',{deltaY:-30,ctrlKey:true,clientX:400,clientY:300,bubbles:true,cancelable:true}));
+                                requestAnimationFrame(()=>window.ctrlPinchGainWorks=Math.abs(map.getZoom()-ctrlStart-1)<.00001);
+                            });
+                        },220);
+                        initiallyHidden && dragVisibilityWorks && fadeWorks && framingWorks && stillInsideHidden && retainedDuringZoom && zoomWorks && panWorks && minimapShown && toggleOff && toggleOn
                         """) { result,error in
                         guard result as? Bool == true, error == nil else { print("Zoom failed",error as Any);exit(1) }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        self.web.evaluateJavaScript("window.immediateWheel && window.anchorStable && window.noAddedInertia && !zoomGesture && map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
+                        self.web.evaluateJavaScript("window.pinchGainWorks && window.ctrlPinchGainWorks && window.tilesUpdateDuringGesture && window.retainsImagesDuringPinch && window.immediateWheel && window.anchorStable && window.noAddedInertia && !zoomGesture && map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
                         guard result as? Bool == true, error == nil else { print("Smooth wheel zoom failed",error as Any);exit(1) }
                         self.web.evaluateJavaScript("""
                             map.setZoom(24,{animate:false});
                             const overzoom=map.getZoom()===24&&tiles._tileZoom===19;
-                            fit();const immediateFit=panel.hidden&&map.getBounds().contains(line.getBounds());
+                            fit();const immediateFit=!minimapVisible&&map.getBounds().contains(line.getBounds());
                             window.returnedTiles=Array.from(tiles.getContainer().querySelectorAll('img')).filter(img=>img.complete&&img.naturalWidth);
                             overzoom&&immediateFit&&returnedTiles.length>0
                             """) { result,error in
                         guard result as? Bool == true, error == nil else { print("Overzoom / instant fit failed",error as Any);exit(1) }
                         self.web.takeSnapshot(with:nil) { image,error in
                             if let image, let data=image.tiffRepresentation,let bitmap=NSBitmapImageRep(data:data),let png=bitmap.representation(using:.png,properties:[:]) { try! png.write(to:root.appendingPathComponent("Samples/Preview.png")) }
-                            print("Passed: native tile loading, markers, bounds, zoom, pan, first-frame wheel response, stable cursor anchor, no added inertia, retained tiles, 3.3% padding, trail-only minimap, level-24 overzoom, instant fit; snapshot saved")
+                            print("Passed: native tile loading, markers, bounds, zoom, pan, minimap fade, visibility frozen during drag, 3x pinch gain, live tile detail, first-frame wheel response, stable cursor anchor, no added inertia, retained tiles, 3.3% padding, trail-only minimap, level-24 overzoom, instant fit; snapshot saved")
                             timer.invalidate();NSApp.terminate(nil)
                         }
                         }
