@@ -1,0 +1,51 @@
+name: GPXQuickLook
+options:
+  bundleIdPrefix: com.brian
+  deploymentTarget:
+    macOS: '13.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    CODE_SIGN_IDENTITY: '-'
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ''
+    MACOSX_DEPLOYMENT_TARGET: '13.0'
+targets:
+  GPXQuickLook:
+    type: application
+    platform: macOS
+    sources:
+      - Shared
+      - path: Sources/AppDelegate.swift
+      - path: Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brian.GPXQuickLook
+        PRODUCT_NAME: GPX QuickLook
+        INFOPLIST_FILE: App-Info.plist
+        CODE_SIGN_ENTITLEMENTS: App.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+    dependencies:
+      - target: GPXPreview
+        embed: true
+  GPXPreview:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Shared
+      - path: Sources/PreviewViewController.swift
+      - path: Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brian.GPXQuickLook.Preview
+        INFOPLIST_FILE: Preview-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Preview.entitlements
+        SKIP_INSTALL: YES
+        ENABLE_HARDENED_RUNTIME: YES
+schemes:
+  GPXQuickLook:
+    build:
+      targets:
+        GPXQuickLook: all
