@@ -55,8 +55,10 @@ import WebKit
                         const center=map.getCenter();map.panBy([60,40],{animate:false});
                         const panWorks=!center.equals(map.getCenter());
                         window.wheelBefore=map.getZoom();
+                        window.trailBeforeWheel=line._path.getAttribute('d');
                         map.getContainer().dispatchEvent(new WheelEvent('wheel',{deltaY:-60,clientX:400,clientY:300,bubbles:true,cancelable:true}));
                         requestAnimationFrame(()=>{
+                            window.liveTrailOnWheel=line._path.getAttribute('d')!==trailBeforeWheel&&line._renderer._zoom===map.getZoom()&&line._rings[0][0].distanceTo(map.latLngToLayerPoint(segments[0][0]))<.01;
                             window.immediateWheel=Math.abs(map.getZoom()-(wheelBefore+.25))<.00001;
                             window.anchorStable=map.latLngToContainerPoint(anchorLatLng).distanceTo(zoomAnchor)<.01;
                             const firstZoom=map.getZoom();
@@ -64,9 +66,10 @@ import WebKit
                         });
                         setTimeout(()=>{
                             const emit=(type,scale)=>{const event=new Event(type,{bubbles:true,cancelable:true});Object.assign(event,{scale,clientX:400,clientY:300});map.getContainer().dispatchEvent(event);};
-                            const startZoom=map.getZoom(),tileZoom=tiles._tileZoom;
+                            const startZoom=map.getZoom(),tileZoom=tiles._tileZoom,trailBeforePinch=line._path.getAttribute('d');
                             emit('gesturestart',1);emit('gesturechange',1.5);
                             requestAnimationFrame(()=>{
+                                window.liveTrailDuringPinch=nativePinchActive&&line._path.getAttribute('d')!==trailBeforePinch&&line._renderer._zoom===map.getZoom()&&line._rings[0][0].distanceTo(map.latLngToLayerPoint(segments[0][0]))<.01;
                                 window.pinchGainWorks=Math.abs(map.getZoom()-startZoom-Math.log2(1.5)*3)<.00001;
                                 window.tilesUpdateDuringGesture=nativePinchActive&&tiles._tileZoom!==tileZoom;
                                 window.retainsImagesDuringPinch=Array.from(tiles.getContainer().querySelectorAll('img')).some(img=>img.complete&&img.naturalWidth);
@@ -80,7 +83,7 @@ import WebKit
                         """) { result,error in
                         guard result as? Bool == true, error == nil else { print("Zoom failed",error as Any);exit(1) }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        self.web.evaluateJavaScript("window.pinchGainWorks && window.ctrlPinchGainWorks && window.tilesUpdateDuringGesture && window.retainsImagesDuringPinch && window.immediateWheel && window.anchorStable && window.noAddedInertia && !zoomGesture && map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
+                        self.web.evaluateJavaScript("window.liveTrailOnWheel && window.liveTrailDuringPinch && window.pinchGainWorks && window.ctrlPinchGainWorks && window.tilesUpdateDuringGesture && window.retainsImagesDuringPinch && window.immediateWheel && window.anchorStable && window.noAddedInertia && !zoomGesture && map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
                         guard result as? Bool == true, error == nil else { print("Smooth wheel zoom failed",error as Any);exit(1) }
                         self.web.evaluateJavaScript("""
                             map.setZoom(24,{animate:false});
@@ -92,7 +95,7 @@ import WebKit
                         guard result as? Bool == true, error == nil else { print("Overzoom / instant fit failed",error as Any);exit(1) }
                         self.web.takeSnapshot(with:nil) { image,error in
                             if let image, let data=image.tiffRepresentation,let bitmap=NSBitmapImageRep(data:data),let png=bitmap.representation(using:.png,properties:[:]) { try! png.write(to:root.appendingPathComponent("Samples/Preview.png")) }
-                            print("Passed: native tile loading, markers, bounds, zoom, pan, minimap fade, visibility frozen during drag, 3x pinch gain, live tile detail, first-frame wheel response, stable cursor anchor, no added inertia, retained tiles, 3.3% padding, trail-only minimap, level-24 overzoom, instant fit; snapshot saved")
+                            print("Passed: native tile loading, markers, bounds, zoom, pan, live trail geometry during scroll and pinch, minimap fade, visibility frozen during drag, 3x pinch gain, live tile detail, first-frame wheel response, stable cursor anchor, no added inertia, retained tiles, 3.3% padding, trail-only minimap, level-24 overzoom, instant fit; snapshot saved")
                             timer.invalidate();NSApp.terminate(nil)
                         }
                         }

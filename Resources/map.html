@@ -44,7 +44,9 @@ tiles.on('load tileunload',updateTileStatus);
 document.getElementById('retry').onclick=()=>{document.getElementById('status').hidden=true;tiles.redraw();if(miniTiles)miniTiles.redraw();};
 let previous;
 const segments=data.segments.map(segment=>segment.map(([lat,lon])=>{if(previous!==undefined){while(lon-previous>180)lon-=360;while(lon-previous< -180)lon+=360;}previous=lon;return [Math.max(-85.05112878,Math.min(85.05112878,lat)),lon];}));
-const line=L.polyline(segments,{color:'#2878d7',weight:3.5,opacity:.95,lineCap:'round'}).addTo(map);
+// Reproject and reclip the trail on every zoom frame, not only on zoomend.
+const LiveTrackRenderer=L.SVG.extend({_onZoom:function(){this._reset();}});
+const line=L.polyline(segments,{renderer:new LiveTrackRenderer(),color:'#2878d7',weight:3.5,opacity:.95,lineCap:'round'}).addTo(map);
 const points=segments.flat();
 function marker(point,kind,label){const loop=L.latLng(points[0]).equals(L.latLng(points[points.length-1]),.00001);return L.marker(point,{title:label,icon:L.divIcon({className:'',html:'<div class="marker '+kind+'"></div>',iconSize:[16,16],iconAnchor:loop?(kind==='start'?[15,8]:[1,8]):[8,8]}),zIndexOffset:kind==='finish'?100:0}).addTo(map).bindTooltip(label);}
 marker(points[0],'start','Start');marker(points[points.length-1],'finish','Finish');
