@@ -32,9 +32,14 @@ import WebKit
                         const bounds=line.getBounds(),size=map.getSize();
                         const a=map.latLngToContainerPoint(bounds.getNorthWest()),b=map.latLngToContainerPoint(bounds.getSouthEast());
                         const fill=Math.max((b.x-a.x)/size.x,(b.y-a.y)/size.y);
-                        const framingWorks=fill>.82&&fill<.84&&a.x>=20&&a.y>=20&&b.x<=size.x-20&&b.y<=size.y-20;
+                        const framingWorks=fill>.93&&fill<.95&&a.x>=11&&a.y>=11&&b.x<=size.x-11&&b.y<=size.y-11;
 
-                        const before=map.getZoom();map.setZoom(before+2,{animate:false});
+                        const before=map.getZoom();
+                        map.setZoom(before+.03,{animate:false});
+                        const stillInsideHidden=panel.hidden&&map.getBounds().contains(line.getBounds());
+                        const originalTiles=Array.from(tiles.getContainer().querySelectorAll('img')).filter(img=>img.complete&&img.naturalWidth);
+                        map.setZoom(before+2,{animate:false});
+                        const retainedDuringZoom=originalTiles.some(img=>tiles.getContainer().contains(img));
                         const zoomWorks=map.getZoom()>before;
                         const minimapShown=!panel.hidden&&!document.getElementById('minimap').hidden;
                         collapse.click();const toggleOff=panel.classList.contains('collapsed')&&document.getElementById('minimap').hidden;
@@ -43,16 +48,25 @@ import WebKit
                         const panWorks=!center.equals(map.getCenter());
                         window.wheelBefore=map.getZoom();
                         map.getContainer().dispatchEvent(new WheelEvent('wheel',{deltaY:-60,clientX:400,clientY:300,bubbles:true,cancelable:true}));
-                        initiallyHidden && framingWorks && zoomWorks && panWorks && minimapShown && toggleOff && toggleOn
+                        initiallyHidden && framingWorks && stillInsideHidden && retainedDuringZoom && zoomWorks && panWorks && minimapShown && toggleOff && toggleOn
                         """) { result,error in
                         guard result as? Bool == true, error == nil else { print("Zoom failed",error as Any);exit(1) }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                         self.web.evaluateJavaScript("map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
                         guard result as? Bool == true, error == nil else { print("Smooth wheel zoom failed",error as Any);exit(1) }
+                        self.web.evaluateJavaScript("""
+                            map.setZoom(24,{animate:false});
+                            const overzoom=map.getZoom()===24&&tiles._tileZoom===19;
+                            fit();const immediateFit=panel.hidden&&map.getBounds().contains(line.getBounds());
+                            window.returnedTiles=Array.from(tiles.getContainer().querySelectorAll('img')).filter(img=>img.complete&&img.naturalWidth);
+                            overzoom&&immediateFit&&returnedTiles.length>0
+                            """) { result,error in
+                        guard result as? Bool == true, error == nil else { print("Overzoom / instant fit failed",error as Any);exit(1) }
                         self.web.takeSnapshot(with:nil) { image,error in
                             if let image, let data=image.tiffRepresentation,let bitmap=NSBitmapImageRep(data:data),let png=bitmap.representation(using:.png,properties:[:]) { try! png.write(to:root.appendingPathComponent("Samples/Preview.png")) }
-                            print("Passed: native tile loading, markers, bounds, zoom, pan, fractional wheel zoom, padded frame fill, minimap collapse and expand; snapshot saved")
+                            print("Passed: native tile loading, markers, bounds, zoom, pan, fractional wheel zoom, retained tiles, 3.3% padding, trail-only minimap, level-24 overzoom, instant fit; snapshot saved")
                             timer.invalidate();NSApp.terminate(nil)
+                        }
                         }
                         }
                         }

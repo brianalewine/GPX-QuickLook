@@ -3,9 +3,28 @@
 </style></head><body><header><h1 id="name"></h1><div class="stats"><div class="stat"><span>Start</span><strong id="start"></strong></div><div class="stat"><span>Finish</span><strong id="finish"></strong></div><div class="stat"><span>Duration</span><strong id="duration"></strong></div><div class="stat"><span>Distance</span><strong id="distance"></strong></div></div></header><div id="mapWrap"><div id="map"></div><button id="fit" title="Zoom to fit" aria-label="Zoom to fit"><svg viewBox="0 0 20 20"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4"/></svg></button><div id="minimapPanel" hidden><div id="minimap" aria-label="Track overview"></div><button id="collapse" title="Collapse minimap" aria-label="Collapse minimap" aria-expanded="true"><svg viewBox="0 0 20 20"><path d="m6 13 7-7M6 6h7v7"/></svg></button></div><div id="status" hidden><span>Some map tiles couldn’t load.</span><button id="retry">Retry</button></div></div><script src="leaflet.js"></script><script>
 const data=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('__TRACK_BASE64__'),c=>c.charCodeAt(0))));
 for(const key of ['name','start','finish','duration','distance'])document.getElementById(key).textContent=data[key];
-const map=L.map('map',{zoomControl:true,scrollWheelZoom:false,zoomAnimation:true,zoomSnap:0,zoomDelta:.5});map.attributionControl.setPrefix(false);
+const map=L.map('map',{zoomControl:true,scrollWheelZoom:false,zoomAnimation:true,fadeAnimation:false,zoomSnap:0,zoomDelta:.5,maxZoom:24});map.attributionControl.setPrefix(false);
 const tileURL='gpx-tile://osm/{z}/{x}/{y}.png';
-const tiles=L.tileLayer(tileURL,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+// Leaflet's hard reset discards every image on each fractional zoom frame.
+// Retain loaded levels and decoded images so zooming and returning to fit never start blank.
+const RetainedTiles=L.TileLayer.extend({
+ initialize:function(url,options){L.TileLayer.prototype.initialize.call(this,url,options);this.decoded=new Map();},
+ getEvents:function(){const events=L.TileLayer.prototype.getEvents.call(this);delete events.viewprereset;return events;},
+ createTile:function(coords,done){
+  const key=this._tileCoordsToKey(coords),cached=this.decoded.get(key);
+  if(cached){this.decoded.delete(key);cached.className='';cached.style.cssText='';delete cached.dataset.failed;setTimeout(()=>done(null,cached),0);return cached;}
+  return L.TileLayer.prototype.createTile.call(this,coords,done);
+ },
+ _removeTile:function(key){
+  const record=this._tiles[key];
+  if(record&&record.el.complete&&record.el.naturalWidth&&!record.el.dataset.failed){
+   L.DomEvent.off(record.el);this.decoded.set(key,record.el);
+   while(this.decoded.size>128)this.decoded.delete(this.decoded.keys().next().value);
+   L.GridLayer.prototype._removeTile.call(this,key);
+  }else L.TileLayer.prototype._removeTile.call(this,key);
+ }
+});
+const tiles=new RetainedTiles(tileURL,{maxZoom:24,maxNativeZoom:19,updateWhenZooming:false,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
 // Judge current visible tiles, never latch an error from a cancelled or past request.
 let statusTimer;
 function updateTileStatus(){clearTimeout(statusTimer);statusTimer=setTimeout(()=>{const current=Object.values(tiles._tiles).filter(t=>t.current);const failed=current.some(t=>t.el.dataset.failed==='true');document.getElementById('status').hidden=!failed;},500);}
@@ -23,19 +42,24 @@ let fitZoom=0,mini=null,miniTiles=null,viewport=null,fitting=false;
 let minimapEnabled=window.gpxMinimapEnabled!==false;
 const panel=document.getElementById('minimapPanel');
 const collapse=document.getElementById('collapse');
-function updateMinimap(){
+function updateMinimap(event){
  if(fitting)return;
- const visible=map.getZoom()>fitZoom+.01||!map.getBounds().contains(line.getBounds());
+ let visibleBounds=map.getBounds();
+ if(event&&event.type==='zoomanim'){
+  const center=map.project(event.center,event.zoom),half=map.getSize().divideBy(2);
+  visibleBounds=L.latLngBounds(map.unproject(center.subtract(half),event.zoom),map.unproject(center.add(half),event.zoom));
+ }
+ const visible=!visibleBounds.contains(line.getBounds());
  panel.hidden=!visible;if(!visible)return;
  panel.classList.toggle('collapsed',!minimapEnabled);
  document.getElementById('minimap').hidden=!minimapEnabled;
  collapse.setAttribute('aria-expanded',String(minimapEnabled));
  collapse.title=collapse.ariaLabel=minimapEnabled?'Collapse minimap':'Expand minimap';
  if(!minimapEnabled)return;
- if(!mini){mini=L.map('minimap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,touchZoom:false,keyboard:false,zoomAnimation:false,zoomSnap:0});miniTiles=L.tileLayer(tileURL,{maxZoom:19}).addTo(mini);L.polyline(segments,{color:'#2878d7',weight:2,interactive:false}).addTo(mini);viewport=L.rectangle(map.getBounds(),{color:'#343e49',weight:1,fillColor:'#343e49',fillOpacity:.12,interactive:false}).addTo(mini);mini.on('click',e=>map.panTo(e.latlng));}
+ if(!mini){mini=L.map('minimap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,touchZoom:false,keyboard:false,zoomAnimation:false,zoomSnap:0});miniTiles=new RetainedTiles(tileURL,{maxZoom:24,maxNativeZoom:19}).addTo(mini);L.polyline(segments,{color:'#2878d7',weight:2,interactive:false}).addTo(mini);viewport=L.rectangle(map.getBounds(),{color:'#343e49',weight:1,fillColor:'#343e49',fillOpacity:.12,interactive:false}).addTo(mini);mini.on('click',e=>map.panTo(e.latlng));}
  const size=mini.getSize(),element=document.getElementById('minimap');
  if(size.x!==element.clientWidth||size.y!==element.clientHeight||!mini._loaded){mini.invalidateSize({pan:false});mini.fitBounds(line.getBounds(),{padding:[12,12],maxZoom:18,animate:false});}
- viewport.setBounds(map.getBounds());
+ viewport.setBounds(visibleBounds);
 }
 collapse.onclick=e=>{e.stopPropagation();minimapEnabled=!minimapEnabled;window.webkit?.messageHandlers?.minimapPreference?.postMessage(minimapEnabled);updateMinimap();};
 let zoomFrame=0,targetZoom=null,zoomAnchor=null,lastFrame=0;
@@ -52,19 +76,20 @@ map.getContainer().addEventListener('wheel',e=>{
  e.preventDefault();map.stop();
  zoomAnchor=map.mouseEventToContainerPoint(e);
  const delta=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?map.getSize().y:1);
- targetZoom=Math.max(map.getMinZoom(),Math.min(19,(targetZoom??map.getZoom())-delta/(e.ctrlKey?90:240)));
+ targetZoom=Math.max(map.getMinZoom(),Math.min(24,(targetZoom??map.getZoom())-delta/(e.ctrlKey?90:240)));
  if(!zoomFrame)zoomFrame=requestAnimationFrame(smoothZoom);
 },{passive:false});
 map.getContainer().addEventListener('mousedown',stopSmoothZoom);
 function fit(){
  stopSmoothZoom();map.stop();fitting=true;map.invalidateSize();
  const size=map.getSize();
- // A 10% buffer on each side of the projected track, with room for endpoint markers.
- map.fitBounds(line.getBounds(),{padding:[Math.max(22,size.x/12),Math.max(22,size.y/12)],maxZoom:18,animate:false});
+ // A 3⅓% buffer per side, with a minimum margin for endpoint markers.
+ map.fitBounds(line.getBounds(),{padding:[Math.max(12,size.x/32),Math.max(12,size.y/32)],maxZoom:18,animate:false});
  fitZoom=map.getZoom();fitting=false;updateMinimap();
 }
 document.getElementById('fit').onclick=fit;
-map.on('moveend zoomend',()=>{updateMinimap();updateTileStatus();});
+map.on('move zoom zoomanim',updateMinimap);
+map.on('moveend zoomend',updateTileStatus);
 let resizeTimer;new ResizeObserver(()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const wasFitted=Math.abs(map.getZoom()-fitZoom)<.01&&map.getBounds().contains(line.getBounds());map.invalidateSize({pan:false});if(wasFitted)fit();else updateMinimap();},80);}).observe(document.getElementById('map'));
 fit();
 </script></body></html>
