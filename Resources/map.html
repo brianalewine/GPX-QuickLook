@@ -126,7 +126,8 @@ map.getContainer().addEventListener('gestureend',event=>{
 window.gpxNativePinch=(phase,magnification,x,y)=>{
  if(phase==='start'){
   stopSmoothZoom();map.stop();nativePinchActive=true;pinchStartZoom=map.getZoom();nativePinchScale=1;
-  zoomAnchor=L.point(x,y);anchorLatLng=map.containerPointToLatLng(zoomAnchor);
+  // AppKit supplies viewport coordinates; account for the header above the map.
+  zoomAnchor=map.mouseEventToContainerPoint({clientX:x,clientY:y});anchorLatLng=map.containerPointToLatLng(zoomAnchor);
   return;
  }
  if(!nativePinchActive)return;

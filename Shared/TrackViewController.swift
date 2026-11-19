@@ -31,7 +31,7 @@ class TrackViewController: NSViewController, WKNavigationDelegate {
                 phase = "change"
             }
             let x = point.x
-            let y = web.bounds.height - point.y
+            let y = web.isFlipped ? point.y : web.bounds.height - point.y
             web.evaluateJavaScript("window.gpxNativePinch?.('\(phase)', \(event.magnification), \(x), \(y))")
         }
         web.navigationDelegate = self

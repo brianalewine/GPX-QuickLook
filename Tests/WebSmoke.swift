@@ -76,14 +76,27 @@ import WebKit
                                 emit('gestureend',1.5);
                                 const ctrlStart=map.getZoom();
                                 map.getContainer().dispatchEvent(new WheelEvent('wheel',{deltaY:-30,ctrlKey:true,clientX:400,clientY:300,bubbles:true,cancelable:true}));
-                                requestAnimationFrame(()=>window.ctrlPinchGainWorks=Math.abs(map.getZoom()-ctrlStart-1)<.00001);
+                                requestAnimationFrame(()=>{
+                                    window.ctrlPinchGainWorks=Math.abs(map.getZoom()-ctrlStart-1)<.00001;
+                                    stopSmoothZoom();
+                                    const rect=map.getContainer().getBoundingClientRect();
+                                    const cursor=L.point(173,127),location=map.containerPointToLatLng(cursor);
+                                    window.gpxNativePinch('start',0,rect.left+cursor.x,rect.top+cursor.y);
+                                    window.gpxNativePinch('change',.2,rect.left+cursor.x,rect.top+cursor.y);
+                                    requestAnimationFrame(()=>{
+                                        window.nativeCursorStable=map.latLngToContainerPoint(location).distanceTo(cursor)<.01;
+                                        window.gpxNativePinch('change',-.1,rect.left+cursor.x,rect.top+cursor.y);
+                                        window.gpxNativePinch('end',0,rect.left+cursor.x,rect.top+cursor.y);
+                                        window.nativeCursorStable=window.nativeCursorStable&&map.latLngToContainerPoint(location).distanceTo(cursor)<.01;
+                                    });
+                                });
                             });
                         },220);
                         initiallyHidden && dragVisibilityWorks && fadeWorks && framingWorks && stillInsideHidden && retainedDuringZoom && zoomWorks && panWorks && minimapShown && toggleOff && toggleOn
                         """) { result,error in
                         guard result as? Bool == true, error == nil else { print("Zoom failed",error as Any);exit(1) }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        self.web.evaluateJavaScript("window.liveTrailOnWheel && window.liveTrailDuringPinch && window.pinchGainWorks && window.ctrlPinchGainWorks && window.tilesUpdateDuringGesture && window.retainsImagesDuringPinch && window.immediateWheel && window.anchorStable && window.noAddedInertia && !zoomGesture && map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
+                        self.web.evaluateJavaScript("window.nativeCursorStable && window.liveTrailOnWheel && window.liveTrailDuringPinch && window.pinchGainWorks && window.ctrlPinchGainWorks && window.tilesUpdateDuringGesture && window.retainsImagesDuringPinch && window.immediateWheel && window.anchorStable && window.noAddedInertia && !zoomGesture && map.getZoom()>window.wheelBefore && Math.abs(map.getZoom()-Math.round(map.getZoom()))>.01") { result,error in
                         guard result as? Bool == true, error == nil else { print("Smooth wheel zoom failed",error as Any);exit(1) }
                         self.web.evaluateJavaScript("""
                             map.setZoom(24,{animate:false});
