@@ -78,7 +78,7 @@ function updateMinimap(event){
  if(!viewport.getBounds().equals(visibleBounds))viewport.setBounds(visibleBounds);
 }
 collapse.onclick=e=>{e.stopPropagation();minimapEnabled=!minimapEnabled;window.webkit?.messageHandlers?.minimapPreference?.postMessage(minimapEnabled);updateMinimap();};
-let zoomFrame=0,targetZoom=null,zoomAnchor=null,anchorLatLng=null,zoomIdleTimer=0,zoomGesture=false,nativePinchActive=false,pinchStartZoom=0;
+let zoomFrame=0,targetZoom=null,zoomAnchor=null,anchorLatLng=null,zoomIdleTimer=0,zoomGesture=false,nativePinchActive=false,pinchStartZoom=0,nativePinchScale=1;
 function finishZoomGesture(){
  clearTimeout(zoomIdleTimer);
  if(zoomGesture){zoomGesture=false;map._moveEnd(true);map.fire('viewreset');}
@@ -122,6 +122,23 @@ map.getContainer().addEventListener('gesturechange',event=>{
 map.getContainer().addEventListener('gestureend',event=>{
  event.preventDefault();if(zoomFrame){cancelAnimationFrame(zoomFrame);smoothZoom();}nativePinchActive=false;finishZoomGesture();
 },{passive:false});
+// AppKit's magnify event is the reliable trackpad pinch signal in WKWebView.
+window.gpxNativePinch=(phase,magnification,x,y)=>{
+ if(phase==='start'){
+  stopSmoothZoom();map.stop();nativePinchActive=true;pinchStartZoom=map.getZoom();nativePinchScale=1;
+  zoomAnchor=L.point(x,y);anchorLatLng=map.containerPointToLatLng(zoomAnchor);
+  return;
+ }
+ if(!nativePinchActive)return;
+ if(phase==='change'){
+  nativePinchScale*=Math.max(.01,1+magnification);
+  targetZoom=Math.max(map.getMinZoom(),Math.min(24,pinchStartZoom+Math.log2(nativePinchScale)*3));
+  if(!zoomFrame)zoomFrame=requestAnimationFrame(smoothZoom);
+ }else if(phase==='end'){
+  if(zoomFrame){cancelAnimationFrame(zoomFrame);smoothZoom();}
+  nativePinchActive=false;finishZoomGesture();
+ }
+};
 map.getContainer().addEventListener('mousedown',stopSmoothZoom);
 function fit(){
  stopSmoothZoom();map.stop();fitting=true;map.invalidateSize();

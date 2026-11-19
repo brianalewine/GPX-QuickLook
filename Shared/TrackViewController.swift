@@ -1,12 +1,39 @@
 import AppKit
 import WebKit
 
+private final class MapWebView: WKWebView {
+    var onMagnify: ((NSEvent) -> Void)?
+
+    override func magnify(with event: NSEvent) {
+        guard let onMagnify else {
+            super.magnify(with: event)
+            return
+        }
+        onMagnify(event)
+    }
+}
+
 class TrackViewController: NSViewController, WKNavigationDelegate {
-    private var web: WKWebView!
+    private var web: MapWebView!
     override func loadView() {
         let configuration = WKWebViewConfiguration()
         MapPreferences.configure(configuration)
-        web = WKWebView(frame: NSRect(x: 0, y: 0, width: 960, height: 680), configuration: configuration)
+        web = MapWebView(frame: NSRect(x: 0, y: 0, width: 960, height: 680), configuration: configuration)
+        web.onMagnify = { [weak self] event in
+            guard let web = self?.web else { return }
+            let point = web.convert(event.locationInWindow, from: nil)
+            let phase: String
+            if event.phase.contains(.began) {
+                phase = "start"
+            } else if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+                phase = "end"
+            } else {
+                phase = "change"
+            }
+            let x = point.x
+            let y = web.bounds.height - point.y
+            web.evaluateJavaScript("window.gpxNativePinch?.('\(phase)', \(event.magnification), \(x), \(y))")
+        }
         web.navigationDelegate = self
         web.customUserAgent = "GPXQuickLook/1.0 (macOS GPX track preview)"
         view = web
