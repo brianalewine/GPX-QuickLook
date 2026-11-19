@@ -8,8 +8,8 @@ A macOS 13+ app and Finder Quick Look extension for GPX tracks and routes.
 
 Requires **macOS 13 or later**, on Apple silicon or Intel.
 
-1. Download **GPX-QuickLook-1.6-macOS-universal.zip** from the [latest release](https://github.com/brianalewine/GPX-QuickLook/releases/latest). The GitHub “Source code” archives do not contain the built app.
-2. Double-click the ZIP to extract it, then drag **GPX QuickLook.app** to **Applications**.
+1. Download **GPX-QuickLook-1.6-macOS-universal.dmg** from the [latest release](https://github.com/brianalewine/GPX-QuickLook/releases/latest). The GitHub “Source code” archives do not contain the built app.
+2. Open the DMG and drag **GPX QuickLook.app** onto the **Applications** shortcut, then eject the disk image. Alternatively, download the ZIP, extract it, and drag the app to Applications.
 3. Open the app from Applications once to register its Quick Look extension.
 4. Select a `.gpx` file in Finder and press **Space**.
 
@@ -23,7 +23,9 @@ To update, quit the app, replace the copy in Applications, and open the new copy
 
 Install Xcode, then run `./scripts/build.sh` and open `build/Build/Products/Release/GPX QuickLook.app`. For permanent installation, drag the app to Applications and open it once.
 
-To produce the universal release ZIP and SHA-256 checksum, run `./scripts/release.sh`. Output is written to `build/release/`.
+The app is standalone: its Quick Look extension is included inside the app bundle. No separate installer or dependencies are required.
+
+To produce the universal release DMG, ZIP, and SHA-256 checksums, run `./scripts/release.sh`. Output is written to `build/release/`.
 
 ## Use
 

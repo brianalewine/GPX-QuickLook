@@ -25,3 +25,9 @@ archive="GPX-QuickLook-${version}-macOS-universal.zip"
 ditto -c -k --sequesterRsrc "$staging" "$output/$archive"
 (cd "$output" && shasum -a 256 "$archive" > "$archive.sha256")
 print "Release archive: $output/$archive"
+ln -s /Applications "$staging/Applications"
+image="GPX-QuickLook-${version}-macOS-universal.dmg"
+hdiutil create -volname "GPX QuickLook $version" -srcfolder "$staging" -format UDZO -ov "$output/$image"
+hdiutil verify "$output/$image"
+(cd "$output" && shasum -a 256 "$image" > "$image.sha256")
+print "Release disk image: $output/$image"
