@@ -21,10 +21,6 @@ staging=$(mktemp -d "$PWD/build/release-stage.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
 ditto "$app" "$staging/GPX QuickLook.app"
 cp README.md "$staging/INSTALL.md"
-archive="GPX-QuickLook-${version}-macOS-universal.zip"
-ditto -c -k --sequesterRsrc "$staging" "$output/$archive"
-(cd "$output" && shasum -a 256 "$archive" > "$archive.sha256")
-print "Release archive: $output/$archive"
 ln -s /Applications "$staging/Applications"
 image="GPX-QuickLook-${version}-macOS-universal.dmg"
 hdiutil create -volname "GPX QuickLook $version" -srcfolder "$staging" -format UDZO -ov "$output/$image"
