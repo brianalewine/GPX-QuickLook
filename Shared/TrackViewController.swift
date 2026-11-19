@@ -57,7 +57,7 @@ class TrackViewController: NSViewController, WKNavigationDelegate {
             "finish": track.finish.map { dates.string(from: $0) } ?? "Unavailable",
             "duration": duration,
             "distance": String(format: "%.2f km", track.distance/1000),
-            "detail": "\(track.points.count.formatted()) points · \(track.segments.count) segments · \(TimeZone.current.abbreviation() ?? "Local time")"
+            "points": track.points.count.formatted()
         ]
         let html = try MapDocument.render(resources: bundle.resourceURL!, payload: payload)
         web.loadHTMLString(html, baseURL: nil)

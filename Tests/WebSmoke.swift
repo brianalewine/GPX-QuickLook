@@ -10,7 +10,7 @@ import WebKit
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let resource = root.appendingPathComponent("Resources")
         let track = try! GPXTrack.read(root.appendingPathComponent("Samples/Charles-River.gpx"))
-        let payload: [String:Any] = ["name":"Charles River walk", "detail":"7 points · 1 segment · EST", "segments":track.segments.map{$0.map{[$0.lat,$0.lon]}}, "start":"Nov 18, 2026 at 8:00:00 AM", "finish":"Nov 18, 2026 at 8:50:00 AM", "duration":"0h 50m 00s", "distance":String(format:"%.2f km",track.distance/1000)]
+        let payload: [String:Any] = ["name":"Charles River walk", "points":track.points.count.formatted(), "segments":track.segments.map{$0.map{[$0.lat,$0.lon]}}, "start":"Nov 18, 2026 at 8:00:00 AM", "finish":"Nov 18, 2026 at 8:50:00 AM", "duration":"0h 50m 00s", "distance":String(format:"%.2f km",track.distance/1000)]
         let html = try! MapDocument.render(resources: resource, payload: payload)
         let configuration = WKWebViewConfiguration()
         MapPreferences.configure(configuration)

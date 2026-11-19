@@ -13,3 +13,4 @@ The app can also open GPX files directly with Command-O or Finder's Open With me
 - Uses OpenStreetMap as the map base
 - Pan and zoom controls
 - Minimap for long trails
+- Lightweight: GPX data stays on your Mac, and only currently visible map tiles are fetched as you browse.
